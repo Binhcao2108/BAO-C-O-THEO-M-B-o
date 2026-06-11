@@ -15,7 +15,7 @@ export function findColumnByKeywords(columns: string[], keywords: string[]): str
 }
 
 export const COL_KEYWORDS = {
-  region: ['địa lý', 'khu vực', 'pyn', 'địa bàn', 'quận', 'huyện', 'chi nhánh', 'vùng'],
+  region: ['block', 'địa lý', 'khu vực', 'pyn', 'địa bàn', 'quận', 'huyện', 'chi nhánh', 'vùng'],
   cause: ['nguyên nhân', 'lỗi', 'reason', 'cause', 'dự đoán'],
   warning: ['lỗi detect', 'cảnh báo', 'warning', 'alert', 'mỹ bảo', 'detect'],
   status: ['tình trạng lỗi', 'trạng thái', 'tình trạng', 'status', 'kết quả'],
@@ -27,7 +27,7 @@ export const COL_KEYWORDS = {
 };
 
 export const summarizeText = (text: string) => {
-  if (!text) return 'N/A';
+  if (!text) return 'Chưa phát hiện lỗi';
   let t = String(text).trim();
   
   try {
@@ -81,7 +81,7 @@ export const summarizeText = (text: string) => {
   if (t.length > 120) {
     t = t.substring(0, 120) + '...';
   }
-  return t || 'N/A';
+  return t || 'Chưa phát hiện lỗi';
 };
 
 export const getIssueCategory = (text: string) => {

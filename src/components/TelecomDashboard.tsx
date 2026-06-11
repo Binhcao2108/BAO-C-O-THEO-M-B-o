@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { SheetData } from '../types';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
-import { AlertCircle, Activity, ArrowRight, ServerCrash, Users, Search } from 'lucide-react';
+import { AlertCircle, Activity, ArrowRight, ServerCrash, Users, Search, Download } from 'lucide-react';
 import { findColumnByKeywords, COL_KEYWORDS, getIssueCategory, summarizeText } from '../utils/telecomMappings';
 
 interface Props {
@@ -14,7 +14,7 @@ const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'
 const getErrorTags = (text: string, row?: any): string[] => {
   const tags: string[] = [];
   
-  if (text && text !== 'N/A') {
+  if (text && text !== 'N/A' && text !== 'Chưa phát hiện lỗi') {
     const lower = text.toLowerCase();
     if (lower.includes('los') || lower.includes('mất tín hiệu') || lower.includes('đèn đỏ')) tags.push('Mất tín hiệu (LOS)');
     if (lower.includes('suy hao') || lower.match(/rx\s*-\d+/) || lower.includes('quang yếu')) tags.push('Suy hao quang');
@@ -68,7 +68,7 @@ const getErrorTags = (text: string, row?: any): string[] => {
 };
 
 const ErrorDetail = ({ text, tags = [], color = 'rose' }: { text: string, tags?: string[], color?: 'rose' | 'amber' }) => {
-  if (!text || text === 'N/A') return <span className="text-gray-500 italic">N/A</span>;
+  if (!text || text === 'N/A' || text === 'Chưa phát hiện lỗi') return <span className="text-gray-500 italic">Chưa phát hiện lỗi</span>;
   
   let cleanDesc = text.trim();
   if (cleanDesc.length > 200) cleanDesc = cleanDesc.substring(0, 200) + '...';
@@ -122,6 +122,8 @@ export default function TelecomDashboard({ sheet, filteredData }: Props) {
     const categoryCount: Record<string, number> = {};
     const regionCount: Record<string, number> = {};
     const modemCount: Record<string, number> = {};
+    const detectCount: Record<string, number> = {};
+    const statusCount: Record<string, number> = {};
 
     const actionList: any[] = [];
     const uniqueDetectTags = new Set<string>();
@@ -135,8 +137,8 @@ export default function TelecomDashboard({ sheet, filteredData }: Props) {
       const user = accountCol && row[accountCol] ? String(row[accountCol]) : `Cus-${idx}`;
       const modem = modemCol && row[modemCol] ? String(row[modemCol]) : 'Unknown';
       
-      const rawDetectedError = warningCol && row[warningCol] ? String(row[warningCol]) : (causeCol && row[causeCol] ? String(row[causeCol]) : 'N/A');
-      const rawStatusValue = statusCol && row[statusCol] ? String(row[statusCol]) : 'N/A';
+      const rawDetectedError = warningCol && row[warningCol] ? String(row[warningCol]) : (causeCol && row[causeCol] ? String(row[causeCol]) : 'Chưa phát hiện lỗi');
+      const rawStatusValue = statusCol && row[statusCol] ? String(row[statusCol]) : 'Chưa phát hiện lỗi';
       
       const detectedError = summarizeText(rawDetectedError);
       const statusValue = summarizeText(rawStatusValue);
@@ -150,10 +152,26 @@ export default function TelecomDashboard({ sheet, filteredData }: Props) {
       modemCount[modem] = (modemCount[modem] || 0) + 1;
 
       const detectTags = getErrorTags(rawDetectedError || detectedError, row);
-      detectTags.forEach(t => uniqueDetectTags.add(t));
+      if (detectTags.length === 0) {
+        detectCount['Chưa phát hiện lỗi'] = (detectCount['Chưa phát hiện lỗi'] || 0) + 1;
+      } else {
+        detectTags.forEach(t => {
+          uniqueDetectTags.add(t);
+          detectCount[t] = (detectCount[t] || 0) + 1;
+        });
+      }
 
-      const statusTags = getErrorTags(rawStatusValue || statusValue, row);
-      statusTags.forEach(t => uniqueStatusTags.add(t));
+      const realStatus = rawStatusValue !== 'Chưa phát hiện lỗi' && rawStatusValue ? String(rawStatusValue).trim() : 'Chưa phát hiện lỗi';
+      const statusTags = realStatus !== 'Chưa phát hiện lỗi' && realStatus !== '' ? [realStatus] : [];
+      statusTags.forEach(t => {
+        uniqueStatusTags.add(t);
+      });
+      
+      if (realStatus !== 'Chưa phát hiện lỗi' && realStatus !== '') {
+        statusCount[realStatus] = (statusCount[realStatus] || 0) + 1;
+      } else {
+        statusCount['Chưa phát hiện lỗi'] = (statusCount['Chưa phát hiện lỗi'] || 0) + 1;
+      }
 
       // add all items to action list
       actionList.push({
@@ -172,7 +190,7 @@ export default function TelecomDashboard({ sheet, filteredData }: Props) {
     const paretoCauses = Object.entries(causesCount)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 10)
-      .map(([name, count]) => ({ name: name.length > 30 ? name.substring(0, 30) + '...' : name, count }));
+      .map(([name, count]) => ({ name: name.length > 50 ? name.substring(0, 50) + '...' : name, count }));
 
     const categoryData = Object.entries(categoryCount)
       .sort((a, b) => b[1] - a[1])
@@ -188,15 +206,26 @@ export default function TelecomDashboard({ sheet, filteredData }: Props) {
       .slice(0, 10)
       .map(([name, count]) => ({ name: name.length > 20 ? name.substring(0, 20) : name, count }));
 
+    const paretoDetects = Object.entries(detectCount)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([name, count]) => ({ name: name.length > 50 ? name.substring(0, 50) + '...' : name, count }));
+
+    const paretoStatus = Object.entries(statusCount)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, count]) => ({ name: name.length > 50 ? name.substring(0, 50) + '...' : name, count }));
+
     return {
       total: filteredData.length,
       paretoCauses,
+      paretoDetects,
+      paretoStatus,
       categoryData,
       regionData,
       modemData,
       actionList,
-      availableDetectTags: Array.from(uniqueDetectTags).sort(),
-      availableStatusTags: Array.from(uniqueStatusTags).sort()
+      availableDetectTags: Array.from(uniqueDetectTags).sort().concat(detectCount['Chưa phát hiện lỗi'] ? ['Chưa phát hiện lỗi'] : []),
+      availableStatusTags: Array.from(uniqueStatusTags).sort().concat(statusCount['Chưa phát hiện lỗi'] ? ['Chưa phát hiện lỗi'] : [])
     };
 
   }, [sheet, filteredData]);
@@ -204,14 +233,54 @@ export default function TelecomDashboard({ sheet, filteredData }: Props) {
   if (!telecomData) return <div className="p-8 text-center text-gray-500">Đang phân tích dữ liệu...</div>;
 
   const displayedActions = telecomData.actionList.filter(a => {
-    if (filterDetect && !a.detectTags.includes(filterDetect)) return false;
-    if (filterStatus && !a.statusTags.includes(filterStatus)) return false;
+    if (filterDetect) {
+      if (filterDetect === 'Chưa phát hiện lỗi') {
+        if (a.detectTags.length > 0) return false;
+      } else {
+        if (!a.detectTags.includes(filterDetect)) return false;
+      }
+    }
+    if (filterStatus) {
+      if (filterStatus === 'Chưa phát hiện lỗi') {
+        if (a.statusTags.length > 0 && a.statusTags[0] !== 'Chưa phát hiện lỗi') return false;
+      } else {
+        if (!a.statusTags.includes(filterStatus)) return false;
+      }
+    }
     return true;
   });
 
   const topModem = telecomData.modemData[0]?.name || 'N/A';
   const topRegion = telecomData.regionData[0]?.name || 'N/A';
   const topCause = telecomData.paretoCauses[0]?.name || 'N/A';
+
+  const handleDownloadCSV = () => {
+    if (displayedActions.length === 0) return;
+
+    const headers = ['Account / Thuê bao', 'Vùng / Region', 'Thiết bị / Modem', 'Lỗi Detect', 'Tình trạng'];
+    const csvContent = [
+      headers.join(','),
+      ...displayedActions.map(a => 
+        [
+          `"${a.user || ''}"`,
+          `"${a.region || ''}"`,
+          `"${a.modem || ''}"`,
+          `"${(a.rawDetectedError || a.detectedError || '').replace(/"/g, '""')}"`,
+          `"${(a.rawStatus || a.status || '').replace(/"/g, '""')}"`
+        ].join(',')
+      )
+    ].join('\n');
+
+    // Add BOM for UTF-8 Excel support
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `danh_sach_loi_${new Date().getTime()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   return (
     <div className="space-y-6">
@@ -264,24 +333,45 @@ export default function TelecomDashboard({ sheet, filteredData }: Props) {
 
       {/* Row 1 Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Pareto Causes */}
+        {/* Pareto Detects */}
         <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
           <h3 className="text-sm font-semibold text-gray-800 mb-6 flex items-center gap-2">
-            <AlertCircle size={16} className="text-rose-500" /> Nhóm nguyên nhân / cảnh báo từ thiết bị thường gặp nhất
+            <AlertCircle size={16} className="text-rose-500" /> Nhóm lỗi detect thường gặp
           </h3>
           <div className="h-[300px]">
              <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={telecomData.paretoCauses} layout="vertical" margin={{ top: 5, right: 30, left: 140, bottom: 5 }}>
+              <BarChart data={telecomData.paretoDetects} layout="vertical" margin={{ top: 5, right: 30, left: 10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#e5e7eb" />
                 <XAxis type="number" tick={{ fontSize: 10, fill: '#6b7280' }} axisLine={{ stroke: '#e5e7eb' }} tickLine={false} />
-                <YAxis type="category" dataKey="name" tick={{ fontSize: 10, fill: '#6b7280' }} axisLine={false} tickLine={false} width={130} />
+                <YAxis type="category" dataKey="name" tick={{ fontSize: 10, fill: '#6b7280' }} axisLine={false} tickLine={false} width={250} />
                 <RechartsTooltip cursor={{ fill: '#f3f4f6' }} contentStyle={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e5e7eb', fontSize: '12px', color: '#111827' }} />
-                <Bar dataKey="count" fill="#ef4444" radius={[0, 4, 4, 0]} barSize={20} />
+                <Bar dataKey="count" fill="#ef4444" radius={[0, 4, 4, 0]} maxBarSize={40} />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
 
+        {/* Initial Detect Error / Status */}
+        <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+          <h3 className="text-sm font-semibold text-gray-800 mb-6 flex items-center gap-2">
+            <Activity size={16} className="text-amber-500" /> Tình trạng lỗi ban đầu
+          </h3>
+          <div className="h-[300px]">
+             <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={telecomData.paretoStatus} layout="vertical" margin={{ top: 5, right: 30, left: 10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#e5e7eb" />
+                <XAxis type="number" tick={{ fontSize: 10, fill: '#6b7280' }} axisLine={{ stroke: '#e5e7eb' }} tickLine={false} />
+                <YAxis type="category" dataKey="name" tick={{ fontSize: 10, fill: '#6b7280' }} axisLine={false} tickLine={false} width={250} />
+                <RechartsTooltip cursor={{ fill: '#f3f4f6' }} contentStyle={{ backgroundColor: '#ffffff', borderRadius: '8px', border: '1px solid #e5e7eb', fontSize: '12px', color: '#111827' }} />
+                <Bar dataKey="count" fill="#f59e0b" radius={[0, 4, 4, 0]} maxBarSize={40} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+
+      {/* Row 2 Charts */}
+      <div className="grid grid-cols-1 gap-6">
         {/* Modem Chart */}
         <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
           <h3 className="text-sm font-semibold text-gray-800 mb-6 flex items-center gap-2">
@@ -307,7 +397,7 @@ export default function TelecomDashboard({ sheet, filteredData }: Props) {
           <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
             <ArrowRight size={16} className="text-blue-500" /> Danh sách thiết bị / thuê bao lỗi ({displayedActions.length} kết quả)
           </h3>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <div className="relative">
               <select
                 value={filterDetect}
@@ -338,6 +428,16 @@ export default function TelecomDashboard({ sheet, filteredData }: Props) {
                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
               </div>
             </div>
+            
+            <button
+              onClick={handleDownloadCSV}
+              disabled={displayedActions.length === 0}
+              className="px-3 py-1.5 flex items-center gap-1.5 text-sm bg-white border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500/50 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm transition-colors ml-auto md:ml-0"
+              title="Xuất CSV danh sách hiện tại"
+            >
+              <Download size={14} />
+              <span className="hidden sm:inline">Xuất CSV</span>
+            </button>
           </div>
         </div>
         
